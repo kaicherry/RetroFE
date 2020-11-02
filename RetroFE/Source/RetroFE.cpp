@@ -303,7 +303,7 @@ bool RetroFE::run( )
     config_.getProperty( "videoLoop", videoLoop );
     VideoFactory::setEnabled( videoEnable );
     VideoFactory::setNumLoops( videoLoop );
-    VideoFactory::createVideo( 0 ); // pre-initialize the gstreamer engine
+    VideoFactory::createVideo( 0, false ); // pre-initialize the gstreamer engine
     Video::setEnabled( videoEnable );
 
     initializeThread = SDL_CreateThread( initialize, "RetroFEInit", (void *)this );
@@ -341,6 +341,7 @@ bool RetroFE::run( )
 	double fpsIdleTime = 1000.0 / static_cast<double>(fpsIdle);
 
     int initializeStatus = 0;
+    bool inputClear      = false;
 
     // load the initial splash screen, unload it once it is complete
     currentPage_        = loadSplashPage( );
@@ -483,6 +484,16 @@ bool RetroFE::run( )
 
         // Switch playlist; start onHighlightExit animation
         case RETROFE_PLAYLIST_REQUEST:
+            inputClear = false;
+            config_.getProperty( "playlistInputClear", inputClear );
+            if (  inputClear  )
+            {
+                // Empty event queue
+                SDL_Event e;
+                while ( SDL_PollEvent( &e ) )
+                    input_.update(e);
+                input_.resetStates( );
+            }
             currentPage_->playlistExit( );
             currentPage_->setScrolling(Page::ScrollDirectionIdle);
             state = RETROFE_PLAYLIST_EXIT;
@@ -511,22 +522,22 @@ bool RetroFE::run( )
         case RETROFE_PLAYLIST_ENTER:
             if (currentPage_->isIdle( ))
             {
-                bool collectionInputClear = false;
-                config_.getProperty( "collectionInputClear", collectionInputClear );
-                if (  collectionInputClear  )
-                {
-                    // Empty event queue
-                    SDL_Event e;
-                    while ( SDL_PollEvent( &e ) )
-                        input_.update(e);
-                    input_.resetStates( );
-                }
                 state = RETROFE_IDLE;
             }
             break;
 
         // Jump in menu; start onMenuJumpExit animation
         case RETROFE_MENUJUMP_REQUEST:
+            inputClear = false;
+            config_.getProperty( "jumpInputClear", inputClear );
+            if (  inputClear  )
+            {
+                // Empty event queue
+                SDL_Event e;
+                while ( SDL_PollEvent( &e ) )
+                    input_.update(e);
+                input_.resetStates( );
+            }
             currentPage_->menuJumpExit( );
             currentPage_->setScrolling(Page::ScrollDirectionIdle);
             state = RETROFE_MENUJUMP_EXIT;
@@ -586,7 +597,8 @@ bool RetroFE::run( )
             RETROFE_STATE state_tmp;
             if (currentPage_->isMenuIdle( ) &&
                 ((state_tmp = processUserInput( currentPage_ )) == RETROFE_HIGHLIGHT_REQUEST ||
-                  state_tmp                                     == RETROFE_MENUJUMP_REQUEST) )
+                  state_tmp                                     == RETROFE_MENUJUMP_REQUEST  ||
+                  state_tmp                                     == RETROFE_PLAYLIST_REQUEST) )
             {
                 state = state_tmp;
             }
@@ -689,9 +701,9 @@ bool RetroFE::run( )
         case RETROFE_NEXT_PAGE_MENU_ENTER:
             if ( currentPage_->isIdle( ) )
             {
-                bool collectionInputClear = false;
-                config_.getProperty( "collectionInputClear", collectionInputClear );
-                if (  collectionInputClear  )
+                inputClear = false;
+                config_.getProperty( "collectionInputClear", inputClear );
+                if (  inputClear  )
                 {
                     // Empty event queue
                     SDL_Event e;
@@ -1273,11 +1285,29 @@ bool RetroFE::run( )
                     if (attractReturn == 1) // Change playlist
                     {
                         attract_.reset( attract_.isSet( ) );
-                        currentPage_->nextPlaylist( );
+
+                        bool cyclePlaylist = false;
+                        config_.getProperty( "attractModeCyclePlaylist", cyclePlaylist );
+
+                        std::string cycleString;
+                        config_.getProperty( "cyclePlaylist", cycleString );
+                        std::vector<std::string> cycleVector;
+                        Utils::listToVector( cycleString, cycleVector, ',' );
+
+                        if ( cyclePlaylist )
+                            currentPage_->nextCyclePlaylist( cycleVector );
+                        else
+                            currentPage_->nextPlaylist( );
+
                         std::string attractModeSkipPlaylist = "";
                         config_.getProperty( "attractModeSkipPlaylist", attractModeSkipPlaylist );
                         if (currentPage_->getPlaylistName( ) == attractModeSkipPlaylist)
-                            currentPage_->nextPlaylist( );
+                        {
+                            if ( cyclePlaylist )
+                                currentPage_->nextCyclePlaylist( cycleVector );
+                            else
+                                currentPage_->nextPlaylist( );
+                        }
                         state = RETROFE_PLAYLIST_REQUEST;
                     }
                     if (attractReturn == 2) // Change collection
@@ -1368,6 +1398,7 @@ RetroFE::RETROFE_STATE RetroFE::processUserInput( Page *page )
             page->setScrolling(Page::ScrollDirectionForward);
             page->scroll(true);
             page->updateScrollPeriod( );
+            return state;
         }
         else if (input_.keystate(UserInput::KeyCodeLeft))
         {
@@ -1375,6 +1406,7 @@ RetroFE::RETROFE_STATE RetroFE::processUserInput( Page *page )
             page->setScrolling(Page::ScrollDirectionBack);
             page->scroll(false);
             page->updateScrollPeriod( );
+            return state;
         }
     }
     else
@@ -1385,6 +1417,7 @@ RetroFE::RETROFE_STATE RetroFE::processUserInput( Page *page )
             page->setScrolling(Page::ScrollDirectionForward);
             page->scroll(true);
             page->updateScrollPeriod( );
+            return state;
         }
         else if (input_.keystate(UserInput::KeyCodeUp))
         {
@@ -1392,13 +1425,13 @@ RetroFE::RETROFE_STATE RetroFE::processUserInput( Page *page )
             page->setScrolling(Page::ScrollDirectionBack);
             page->scroll(false);
             page->updateScrollPeriod( );
+            return state;
         }
     }
 
     // Ignore other keys while the menu is scrolling
-    if ( page->isMenuIdle( ) )
+    if ( page->isIdle( ) && currentTime_ - keyLastTime_ > keyDelayTime_ )
     {
-
         if ( input_.keystate(UserInput::KeyCodeMenu) && !menuMode_)
         {
             state = RETROFE_MENUMODE_START_REQUEST;
@@ -1608,6 +1641,12 @@ RetroFE::RETROFE_STATE RetroFE::processUserInput( Page *page )
                 saveRetroFEState( );
             }
         }
+    }
+
+    if ( state != RETROFE_IDLE )
+    {
+        keyLastTime_ = currentTime_;
+        return state;
     }
 
     // Check if we're done scrolling
