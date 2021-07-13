@@ -21,6 +21,8 @@
 #include <string>
 #include <list>
 #include <vector>
+#include <future>
+#include <thread>
 
 class Component;
 class Configuration;
@@ -52,6 +54,7 @@ public:
     void exitMenu();
     void enterGame();
     void exitGame();
+    void called_from_async();
     std::string getPlaylistName();
     void favPlaylist();
     void nextPlaylist();
@@ -131,6 +134,7 @@ public:
     void  setJukebox();
     bool  isJukebox();
     bool  isJukeboxPlaying();
+    void  callPixelcade();
 
 private:
     void playlistChange();
