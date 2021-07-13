@@ -28,7 +28,7 @@
 #include <vector>
 #include <iostream>
 
-ReloadableMedia::ReloadableMedia(Configuration &config, bool systemMode, bool layoutMode, bool commonMode, bool menuMode, std::string type, std::string imageType, Page &p, int displayOffset, bool isVideo, Font *font)
+ReloadableMedia::ReloadableMedia(Configuration &config, bool systemMode, bool layoutMode, bool commonMode, bool menuMode, std::string type, std::string imageType, Page &p, int displayOffset, bool isVideo, Font *font, bool jukebox, int jukeboxNumLoops)
     : Component(p)
     , config_(config)
     , systemMode_(systemMode)
@@ -43,7 +43,8 @@ ReloadableMedia::ReloadableMedia(Configuration &config, bool systemMode, bool la
     , type_(type)
     , displayOffset_(displayOffset)
     , imageType_(imageType)
-
+    , jukebox_(jukebox)
+    , jukeboxNumLoops_(jukeboxNumLoops)
 {
     allocateGraphicsMemory();
 }
@@ -135,6 +136,20 @@ void ReloadableMedia::reloadTexture()
     {
         names.push_back(selectedItem->cloneof);
     }
+
+    std::string typeLC   = Utils::toLower(type_);
+    if (typeLC == "isfavorite")
+    {
+        if (selectedItem->isFavorite)
+        {
+            names.push_back("yes");
+        }
+        else
+        {
+            names.push_back("no");
+        }
+    }
+
     names.push_back("default");
 
     if(isVideo_)
@@ -213,10 +228,14 @@ void ReloadableMedia::reloadTexture()
     for(unsigned int n = 0; n < names.size() && !loadedComponent_; ++n)
     {
         std::string basename = names[n];
-        std::string typeLC   = Utils::toLower(type_);
         bool        defined  = false;
+        std::string type     = type_;
+
         if ( isVideo_ )
+        {
             typeLC = Utils::toLower(imageType_);
+            type   = imageType_;
+        }
 
         if(basename == "default")
         {
@@ -296,7 +315,7 @@ void ReloadableMedia::reloadTexture()
 
         if (!selectedItem->leaf) // item is not a leaf
         {
-            (void)config_.getProperty("collections." + selectedItem->name + "." + type_, basename );
+            (void)config_.getProperty("collections." + selectedItem->name + "." + type, basename );
         }
 
         bool overwriteXML = false;
@@ -304,7 +323,7 @@ void ReloadableMedia::reloadTexture()
         if ( !defined || overwriteXML ) // No basename was found yet; check the info in stead
         {
             std::string basename_tmp;
-            selectedItem->getInfo( type_, basename_tmp );
+            selectedItem->getInfo( type, basename_tmp );
             if ( basename_tmp != "" )
             {
                 basename = basename_tmp;
@@ -317,12 +336,12 @@ void ReloadableMedia::reloadTexture()
         {
 
             // check the master collection for the system artifact 
-            loadedComponent_ = findComponent(collectionName, type_, type_, "", true, false);
+            loadedComponent_ = findComponent(collectionName, type, type, "", true, false);
 
             // check collection for the system artifact
             if(!loadedComponent_)
             {
-              loadedComponent_ = findComponent(selectedItem->collectionInfo->name, type_, type_, "", true, false);
+              loadedComponent_ = findComponent(selectedItem->collectionInfo->name, type, type, "", true, false);
             }
 
         }
@@ -334,18 +353,18 @@ void ReloadableMedia::reloadTexture()
             {
 
               // check the master collection for the artifact 
-              loadedComponent_ = findComponent(collectionName, type_, basename, "", false, false);
+              loadedComponent_ = findComponent(collectionName, type, basename, "", false, false);
 
               // check the collection for the artifact
               if(!loadedComponent_)
               {
-                loadedComponent_ = findComponent(selectedItem->collectionInfo->name, type_, basename, "", false, false);
+                loadedComponent_ = findComponent(selectedItem->collectionInfo->name, type, basename, "", false, false);
               }
 
               // check the rom directory for the artifact
               if(!loadedComponent_)
               {
-                loadedComponent_ = findComponent(selectedItem->collectionInfo->name, type_, type_, selectedItem->filepath, false, false);
+                loadedComponent_ = findComponent(selectedItem->collectionInfo->name, type, type, selectedItem->filepath, false, false);
               }
 
             }
@@ -353,18 +372,18 @@ void ReloadableMedia::reloadTexture()
             {
 
               // check the master collection for the artifact 
-              loadedComponent_ = findComponent(collectionName, type_, basename, "", false, false);
+              loadedComponent_ = findComponent(collectionName, type, basename, "", false, false);
 
               // check the collection for the artifact
               if(!loadedComponent_)
               {
-                loadedComponent_ = findComponent(selectedItem->collectionInfo->name, type_, basename, "", false, false);
+                loadedComponent_ = findComponent(selectedItem->collectionInfo->name, type, basename, "", false, false);
               }
 
               // check the submenu collection for the system artifact
               if (!loadedComponent_)
               {
-                loadedComponent_ = findComponent(selectedItem->name, type_, type_, "", true, false);
+                loadedComponent_ = findComponent(selectedItem->name, type, type, "", true, false);
               } 
 
             }
@@ -434,7 +453,10 @@ Component *ReloadableMedia::findComponent(std::string collection, std::string ty
 
     if(isVideo)
     {
-        component = videoBuild.createVideo(imagePath, page, basename, baseViewInfo.Monitor, type=="video");
+        if ( jukebox_ )
+            component = videoBuild.createVideo(imagePath, page, basename, baseViewInfo.Monitor, type=="video", jukeboxNumLoops_);
+        else
+            component = videoBuild.createVideo(imagePath, page, basename, baseViewInfo.Monitor, type=="video");
     }
     else
     {
@@ -456,4 +478,13 @@ void ReloadableMedia::draw()
         loadedComponent_->baseViewInfo = baseViewInfo;
         loadedComponent_->draw();
     }
+}
+
+
+bool ReloadableMedia::isJukeboxPlaying()
+{
+    if ( jukebox_ && loadedComponent_ )
+        return loadedComponent_->isPlaying();
+    else
+        return false;
 }
