@@ -122,13 +122,7 @@ void Page::deInitialize()
     }
 }
 
-void Page::called_from_async() {
-    if (selectedItem_->collectionInfo->lowercaseName() != "" && selectedItem_->name != "")
-    {
-        callPixelcade();
-    }
-    
-}
+
 bool Page::isMenusFull()
 {
   return (menuDepth_ > menus_.size());
