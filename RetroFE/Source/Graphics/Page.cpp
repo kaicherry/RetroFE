@@ -20,12 +20,17 @@
 #include "../Collection/CollectionInfo.h"
 #include "Component/Text.h"
 #include "../Utility/Log.h"
+#include "../Utility/Httplib.h"
 #include "Component/ScrollingList.h"
 #include "../Sound/Sound.h"
 #include "ComponentItemBindingBuilder.h"
 #include "PageBuilder.h"
 #include <algorithm>
+#include <iostream>
+#include <chrono>
+#include <future>
 #include <sstream>
+
 
 
 Page::Page(Configuration &config, int layoutWidth, int layoutHeight)
@@ -117,7 +122,13 @@ void Page::deInitialize()
     }
 }
 
-
+void Page::called_from_async() {
+    if (selectedItem_->collectionInfo->lowercaseName() != "" && selectedItem_->name != "")
+    {
+        callPixelcade();
+    }
+    
+}
 bool Page::isMenusFull()
 {
   return (menuDepth_ > menus_.size());
@@ -478,6 +489,10 @@ void Page::highlightEnter()
         }
     }
 
+    if (selectedItem_->collectionInfo->lowercaseName() != "" && selectedItem_->name != "")
+    {
+        callPixelcade();
+    }
     for(std::vector<Component *>::iterator it = LayerComponents.begin(); it != LayerComponents.end(); ++it)
     {
         (*it)->triggerEvent( "highlightEnter", menuDepth_ - 1 );
@@ -539,7 +554,9 @@ void Page::playlistEnter()
             }
         }
     }
-
+     if (selectedItem_->collectionInfo->lowercaseName() != "" && selectedItem_->name != ""){
+         callPixelcade();
+    }
     for(std::vector<Component *>::iterator it = LayerComponents.begin(); it != LayerComponents.end(); ++it)
     {
         (*it)->triggerEvent( "playlistEnter", menuDepth_ - 1 );
@@ -994,6 +1011,11 @@ void Page::enterMenu()
                 menu->triggerMenuEnterEvent( menuDepth_ - 1 );
             }
         }
+    }
+
+    if (selectedItem_->collectionInfo->lowercaseName() != "" && selectedItem_->name != "")
+    {
+        callPixelcade();
     }
 
     for(std::vector<Component *>::iterator it = LayerComponents.begin(); it != LayerComponents.end(); ++it)
@@ -1666,4 +1688,25 @@ bool Page::isJukeboxPlaying()
 
     return retVal;
 
+}
+
+
+void Page::callPixelcade()
+{
+    std::string usePixelcadeKey = "usePixelcade";
+    bool usePixelcade = false;
+    usePixelcade = config_.propertyExists("usePixelcade");
+
+    if (usePixelcade == true)
+    {
+        config_.getProperty(usePixelcadeKey, usePixelcade);
+        if (usePixelcade) {
+            httplib::Client cli("localhost", 8080);
+            std::string myItem = "/arcade/stream/" + selectedItem_->collectionInfo->lowercaseName() + "/" + selectedItem_->name;
+            auto res = cli.Get(myItem.c_str());
+            if (res && res->status == 200) {
+            std::cout << res->body << std::endl;
+        }
+    }
+}
 }
