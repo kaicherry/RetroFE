@@ -54,7 +54,6 @@ public:
     void exitMenu();
     void enterGame();
     void exitGame();
-    void called_from_async();
     std::string getPlaylistName();
     void favPlaylist();
     void nextPlaylist();
